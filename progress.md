@@ -132,21 +132,23 @@
 - [x] All evaluation charts generated
 
 ### GCP Bootstrap & Terraform
-- [ ] bootstrap.sh executed (requires GCP account + billing)
-- [ ] 5 GitHub secrets configured
-- [ ] terraform apply completed
-- [ ] Cloud Run live with public URL
+- [x] bootstrap.sh executed
+- [x] 5 GitHub secrets configured
+- [x] terraform apply completed (CI: all jobs green)
+- [x] Cloud Run live with public URL
 
 ### Backend
 - [x] FastAPI with /predict and /dtc/:code implemented
 - [x] Async BigQuery logging
 - [x] Docker build defined
 - [x] 9/9 unit tests passing
-- [ ] Deployed to Cloud Run (requires GCP)
+- [x] Deployed to Cloud Run via GitHub Actions CI/CD
+- [x] All 3 demo scenarios validated locally (healthy/degrading/critical)
+- [x] Critical scenario verified: prob=0.705, pred=IMMINENT FAILURE, alert=true
 
 ### Mobile
 - [x] All 5 screens implemented
-- [x] Demo mode with 3 scenarios
+- [x] Demo mode with 3 scenarios (critical values corrected and validated)
 - [x] SHAP explainability screen
 - [ ] Tested in simulator (requires npm install + expo start)
 
