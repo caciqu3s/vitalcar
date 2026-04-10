@@ -1,0 +1,351 @@
+# =============================================================================
+# VitalCar CI/CD Pipeline
+#
+# Triggers:
+#   - Push to main         → full deploy (Terraform + Docker + Cloud Run)
+#   - Push to feature/*    → tests only (no deploy)
+#   - Pull Request to main → Terraform plan posted as PR comment
+#
+# Jobs:
+#   1. test          — Python backend unit tests
+#   2. tf-plan       — terraform plan (PRs only)
+#   3. tf-apply      — terraform apply (main only)
+#   4. build-push    — Docker build + push to Artifact Registry
+#   5. deploy        — update Cloud Run with new image
+#   6. upload-model  — train + upload ML model to GCS (only if ML files changed)
+# =============================================================================
+
+name: VitalCar CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+  pull_request:
+    branches:
+      - main
+
+# Permissions required for WIF to work
+permissions:
+  contents: read
+  id-token: write       # required for WIF
+  pull-requests: write  # to post tf plan as PR comment
+
+env:
+  PROJECT_ID:      ${{ secrets.GCP_PROJECT_ID }}
+  REGION:          ${{ secrets.GCP_REGION }}
+  REGISTRY:        ${{ secrets.GCP_REGION }}-docker.pkg.dev
+  IMAGE:           ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vitalcar/api
+  SERVICE_NAME:    vitalcar-api
+  TFSTATE_BUCKET:  ${{ secrets.TFSTATE_BUCKET }}
+
+jobs:
+  # ===========================================================================
+  # JOB 1 — Python backend tests
+  # ===========================================================================
+  test:
+    name: "🧪 Backend Tests"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run tests
+        run: |
+          cd backend
+          pytest tests/ -v --tb=short
+
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check backend/
+
+  # ===========================================================================
+  # JOB 2 — Terraform Plan (runs on Pull Requests)
+  # ===========================================================================
+  tf-plan:
+    name: "📋 Terraform Plan"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Keyless authentication via WIF — no SA keys stored in GitHub
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+          terraform_wrapper: true   # required to capture plan output
+
+      - name: Terraform Init
+        run: |
+          cd infra
+          terraform init \
+            -backend-config="bucket=${TFSTATE_BUCKET}" \
+            -backend-config="prefix=terraform/state"
+
+      - name: Terraform Format Check
+        run: |
+          cd infra
+          terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: |
+          cd infra
+          terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd infra
+          terraform plan \
+            -var="project_id=${PROJECT_ID}" \
+            -var="region=${REGION}" \
+            -no-color \
+            -out=tfplan
+        continue-on-error: true
+
+      # Post plan result as a PR comment
+      - name: Post Plan as PR Comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### 📋 Terraform Plan \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+
+            </details>
+
+            *Run by: @${{ github.actor }} | Workflow: \`${{ github.workflow }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Fail if Plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  # ===========================================================================
+  # JOB 3 — Terraform Apply (main branch only)
+  # ===========================================================================
+  tf-apply:
+    name: "🏗️ Terraform Apply"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: test
+    environment: production  # requires manual approval if configured in GitHub
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Terraform Init
+        run: |
+          cd infra
+          terraform init \
+            -backend-config="bucket=${TFSTATE_BUCKET}" \
+            -backend-config="prefix=terraform/state"
+
+      - name: Terraform Apply
+        run: |
+          cd infra
+          terraform apply \
+            -var="project_id=${PROJECT_ID}" \
+            -var="region=${REGION}" \
+            -auto-approve \
+            -input=false
+
+      # Export Terraform outputs to subsequent jobs via GitHub output
+      - name: Capture Terraform outputs
+        id: tf_outputs
+        run: |
+          cd infra
+          echo "cloudrun_url=$(terraform output -raw cloudrun_url)" >> $GITHUB_OUTPUT
+          echo "registry_url=$(terraform output -raw artifact_registry_url)" >> $GITHUB_OUTPUT
+
+    outputs:
+      cloudrun_url: ${{ steps.tf_outputs.outputs.cloudrun_url }}
+
+  # ===========================================================================
+  # JOB 4 — Docker Build + Push to Artifact Registry
+  # ===========================================================================
+  build-push:
+    name: "🐳 Build & Push Docker"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: tf-apply
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${REGISTRY} --quiet
+
+      - name: Build and Push Docker image
+        run: |
+          docker build \
+            --tag "${IMAGE}:${{ github.sha }}" \
+            --tag "${IMAGE}:latest" \
+            --cache-from "${IMAGE}:latest" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            ./backend
+
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  # ===========================================================================
+  # JOB 5 — Deploy to Cloud Run
+  # ===========================================================================
+  deploy:
+    name: "🚀 Deploy to Cloud Run"
+    runs-on: ubuntu-latest
+    needs: [tf-apply, build-push]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region:  ${{ env.REGION }}
+          image:   ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Smoke test — check /health
+        run: |
+          URL="${{ needs.tf-apply.outputs.cloudrun_url }}"
+          echo "Testing: ${URL}/health"
+
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${URL}/health")
+            if [ "$STATUS" = "200" ]; then
+              echo "✓ API responding with 200"
+              exit 0
+            fi
+            echo "  Attempt $i: status $STATUS — waiting..."
+            sleep 10
+          done
+
+          echo "❌ API did not respond after 5 attempts"
+          exit 1
+
+      - name: Write deploy summary
+        run: |
+          echo "### ✅ Deploy completed!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**API URL:** ${{ needs.tf-apply.outputs.cloudrun_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.IMAGE }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # JOB 6 — Train + Upload ML model to GCS
+  # Runs only when ML files are changed — avoids unnecessary retraining
+  # ===========================================================================
+  upload-model:
+    name: "🤖 Upload ML Model"
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: tf-apply
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if ML files changed
+        id: ml_changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ml:
+              - 'ml_pipeline/**'
+              - 'backend/ml/**'
+
+      - name: Setup Python
+        if: steps.ml_changed.outputs.ml == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Train model
+        if: steps.ml_changed.outputs.ml == 'true'
+        run: |
+          cd ml_pipeline
+          pip install -r requirements.txt
+          python main.py
+          echo "✓ Model trained: outputs/models/Random_Forest.pkl"
+
+      - name: Authenticate to GCP via WIF
+        if: steps.ml_changed.outputs.ml == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account:            ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Upload models to GCS
+        if: steps.ml_changed.outputs.ml == 'true'
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path:        ml_pipeline/outputs/models/
+          destination: ${{ secrets.GCP_PROJECT_ID }}-models/
+          glob:        "*.pkl"
+
+      - name: Write model upload summary
+        if: steps.ml_changed.outputs.ml == 'true'
+        run: |
+          echo "### 🤖 Model updated!" >> $GITHUB_STEP_SUMMARY
+          echo ".pkl files uploaded to gs://${{ secrets.GCP_PROJECT_ID }}-models/" >> $GITHUB_STEP_SUMMARY
