@@ -28,7 +28,35 @@
 
 ---
 
-## Session 2 — GCP Bootstrap + Terraform (PENDING)
+## Session 2 — GCP Bootstrap + Terraform
+
+### Status: COMPLETE
+
+### Tasks
+- [x] Create bootstrap.sh (GCP project, APIs, tfstate bucket, SA, WIF)
+- [x] Create infra/variables.tf
+- [x] Create infra/main.tf (Artifact Registry, Cloud Storage, BigQuery, Firestore, Secret Manager, Cloud Run)
+- [x] Create infra/outputs.tf
+- [x] Create infra/terraform.tfvars
+- [x] Create .github/workflows/deploy.yml (CI/CD: test → tf-plan → tf-apply → build-push → deploy → upload-model)
+
+### Files Created
+- `bootstrap.sh` — run once before Terraform to set up GCP project
+- `infra/variables.tf` — Terraform variable declarations
+- `infra/main.tf` — all GCP infrastructure as code
+- `infra/outputs.tf` — exported values after apply
+- `infra/terraform.tfvars` — default variable values
+- `.github/workflows/deploy.yml` — full CI/CD pipeline
+
+### Next Steps (manual)
+1. Edit `bootstrap.sh` — set `BILLING_ACCOUNT_ID` and `GITHUB_ORG`
+2. Run `./bootstrap.sh`
+3. Add the 5 secrets printed by bootstrap to GitHub repo settings
+4. Run `cd infra && terraform init && terraform plan && terraform apply`
+5. Upload ML models: `gsutil cp ml_pipeline/outputs/models/*.pkl gs://vitalcar-tcc-models/`
+
+---
+
 ## Session 3 — Backend FastAPI (PENDING)
 ## Session 4 — Mobile React Native (PENDING)
 ## Session 5 — Analytics BigQuery (PENDING)
