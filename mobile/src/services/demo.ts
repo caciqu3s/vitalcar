@@ -27,7 +27,8 @@ export const DEMO_SCENARIOS: Record<string, DemoScenario> = {
   critical: {
     label: 'Imminent Failure',
     readings: [
-      { rpm: 1100, process_temp: 318, air_temp: 298, torque: 72, tool_wear: 230 },
+      // rpm=1700, torque=68, temp_diff=10 → power_proxy=115600W, prob≈0.705, pred=1 (IMMINENT FAILURE)
+      { rpm: 1700, process_temp: 308, air_temp: 298, torque: 68, tool_wear: 240 },
     ],
   },
 };
