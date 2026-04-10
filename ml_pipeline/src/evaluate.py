@@ -108,10 +108,19 @@ def plot_shap_values(rf_model, X_test_df, feature_names):
     """Model explainability with SHAP (XAI)"""
     os.makedirs('outputs/figures', exist_ok=True)
     explainer = shap.TreeExplainer(rf_model)
-    shap_values = explainer.shap_values(X_test_df)
+
+    # Use the new Explanation-based API (shap >= 0.46)
+    explanation = explainer(X_test_df)
+
+    # For a binary classifier the Explanation has shape (n_samples, n_features, 2).
+    # Index [... , 1] selects the positive (failure) class.
+    if explanation.values.ndim == 3:
+        explanation_failure = explanation[..., 1]
+    else:
+        explanation_failure = explanation
 
     plt.figure()
-    shap.summary_plot(shap_values[1], X_test_df, feature_names=feature_names, show=False)
+    shap.plots.beeswarm(explanation_failure, show=False)
     plt.tight_layout()
     plt.savefig('outputs/figures/shap_summary.png', dpi=150, bbox_inches='tight')
     plt.close()

@@ -6,11 +6,18 @@ Run after main.py has generated the .pkl files.
 
 import joblib
 import numpy as np
+import pandas as pd
 
 
 # Load trained model and scaler
 model = joblib.load('outputs/models/Random_Forest.pkl')
 scaler = joblib.load('outputs/models/scaler.pkl')
+
+FEATURE_NAMES = [
+    'Type', 'Air temperature [K]', 'Process temperature [K]',
+    'Rotational speed [rpm]', 'Torque [Nm]', 'Tool wear [min]',
+    'temp_diff', 'power_proxy',
+]
 
 
 def predict_vehicle_health(sensor_reading: dict) -> dict:
@@ -30,20 +37,21 @@ def predict_vehicle_health(sensor_reading: dict) -> dict:
     temp_diff   = sensor_reading['process_temp'] - sensor_reading['air_temp']
     power_proxy = sensor_reading['rpm'] * sensor_reading['torque']
 
-    features = np.array([[
-        sensor_reading['vehicle_type'],
-        sensor_reading['air_temp'],
-        sensor_reading['process_temp'],
-        sensor_reading['rpm'],
-        sensor_reading['torque'],
-        sensor_reading['tool_wear'],
-        temp_diff,
-        power_proxy
-    ]])
+    row = {
+        'Type':                     sensor_reading['vehicle_type'],
+        'Air temperature [K]':      sensor_reading['air_temp'],
+        'Process temperature [K]':  sensor_reading['process_temp'],
+        'Rotational speed [rpm]':   sensor_reading['rpm'],
+        'Torque [Nm]':              sensor_reading['torque'],
+        'Tool wear [min]':          sensor_reading['tool_wear'],
+        'temp_diff':                temp_diff,
+        'power_proxy':              power_proxy,
+    }
+    X = pd.DataFrame([row], columns=FEATURE_NAMES)
+    X_scaled = scaler.transform(X)
 
-    features_scaled = scaler.transform(features)
-    prediction  = model.predict(features_scaled)[0]
-    probability = model.predict_proba(features_scaled)[0][1]
+    prediction  = int(model.predict(X_scaled)[0])
+    probability = float(model.predict_proba(X_scaled)[0][1])
 
     return {
         'status':              'IMMINENT FAILURE' if prediction == 1 else 'NORMAL',
