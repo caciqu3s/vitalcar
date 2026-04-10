@@ -55,12 +55,14 @@ def predict(sensors: dict) -> dict:
     }
     X = pd.DataFrame([row], columns=FEATURE_NAMES)
     X_scaled = _scaler.transform(X)
+    X_scaled_df = pd.DataFrame(X_scaled, columns=FEATURE_NAMES)
 
     prediction  = int(_model.predict(X_scaled)[0])
     probability = float(_model.predict_proba(X_scaled)[0][1])
 
     # SHAP — explainability using new Explanation API (shap >= 0.46)
-    explanation = _explainer(X)
+    # Must pass scaled features (same space the tree was built on)
+    explanation = _explainer(X_scaled_df)
     if explanation.values.ndim == 3:
         shap_arr = explanation.values[0, :, 1]  # failure class
     else:
