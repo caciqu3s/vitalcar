@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# ML outputs (generated — not versioned)
+ml_pipeline/data/raw/*.csv
+ml_pipeline/data/raw/*.zip
+ml_pipeline/data/processed/
+ml_pipeline/outputs/models/*.pkl
+ml_pipeline/outputs/figures/*.png
+ml_pipeline/outputs/reports/*.json
+ml_pipeline/outputs/reports/*.csv
+
+# Node / React Native
+node_modules/
+.expo/
+*.tgz
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/.terraform.lock.hcl
+infra/terraform.tfvars.local
+
+# Secrets
+.env
+*.pem
+service-account*.json
+
+# OS
+.DS_Store
