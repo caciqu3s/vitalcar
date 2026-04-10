@@ -157,6 +157,7 @@ TF_ROLES=(
   "roles/storage.admin"
   "roles/artifactregistry.admin"
   "roles/iam.serviceAccountAdmin"
+  "roles/iam.serviceAccountUser"        # required: actAs Cloud Run SA during terraform apply
   "roles/iam.workloadIdentityPoolAdmin"
   "roles/resourcemanager.projectIamAdmin"
   "roles/secretmanager.admin"
