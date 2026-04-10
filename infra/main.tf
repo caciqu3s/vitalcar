@@ -209,6 +209,16 @@ resource "google_project_iam_member" "cloudrun_roles" {
   member   = "serviceAccount:${google_service_account.cloudrun_sa.email}"
 }
 
+# Grant the Terraform SA roles/iam.serviceAccountUser so it can set
+# service_account on Cloud Run (requires iam.serviceaccounts.actAs).
+# The TF SA already has roles/resourcemanager.projectIamAdmin which allows
+# it to manage project IAM bindings, including this self-bootstrap grant.
+resource "google_project_iam_member" "tf_sa_service_account_user" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:terraform-sa@${var.project_id}.iam.gserviceaccount.com"
+}
+
 # =============================================================================
 # CLOUD RUN — FastAPI
 # =============================================================================
@@ -274,9 +284,18 @@ resource "google_cloud_run_v2_service" "api" {
 
   labels = local.labels
 
+  # Prevent scaling-attribute drift from triggering unnecessary re-deploys.
+  # Cloud Run V2 may add computed fields (manual_instance_count) not in config.
+  lifecycle {
+    ignore_changes = [
+      template[0].scaling,
+    ]
+  }
+
   depends_on = [
     google_artifact_registry_repository.vitalcar,
     google_project_iam_member.cloudrun_roles,
+    google_project_iam_member.tf_sa_service_account_user,
   ]
 }
 
