@@ -16,7 +16,7 @@ terraform {
 
   # Remote backend — bucket created by bootstrap.sh
   backend "gcs" {
-    bucket = "vitalcar-tcc-tfstate"   # overridden via -backend-config
+    bucket = "vitalcar-tcc-tfstate" # overridden via -backend-config
     prefix = "terraform/state"
   }
 }
@@ -60,7 +60,7 @@ resource "google_storage_bucket" "models" {
 
   lifecycle_rule {
     condition {
-      num_newer_versions = 3  # keep only the 3 most recent model versions
+      num_newer_versions = 3 # keep only the 3 most recent model versions
     }
     action {
       type = "Delete"
@@ -97,18 +97,18 @@ resource "google_bigquery_table" "sensor_readings" {
   labels     = local.labels
 
   schema = jsonencode([
-    { name = "timestamp",           type = "TIMESTAMP", mode = "REQUIRED" },
-    { name = "session_id",          type = "STRING",    mode = "NULLABLE" },
-    { name = "vehicle_id",          type = "STRING",    mode = "REQUIRED" },
-    { name = "rpm",                 type = "FLOAT",     mode = "NULLABLE" },
-    { name = "engine_temp_k",       type = "FLOAT",     mode = "NULLABLE" },
-    { name = "engine_load",         type = "FLOAT",     mode = "NULLABLE" },
-    { name = "speed_kmh",           type = "FLOAT",     mode = "NULLABLE" },
-    { name = "torque_nm",           type = "FLOAT",     mode = "NULLABLE" },
-    { name = "fuel_trim",           type = "FLOAT",     mode = "NULLABLE" },
-    { name = "health_score",        type = "FLOAT",     mode = "NULLABLE" },
-    { name = "failure_probability", type = "FLOAT",     mode = "NULLABLE" },
-    { name = "alert_triggered",     type = "BOOLEAN",   mode = "NULLABLE" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "session_id", type = "STRING", mode = "NULLABLE" },
+    { name = "vehicle_id", type = "STRING", mode = "REQUIRED" },
+    { name = "rpm", type = "FLOAT", mode = "NULLABLE" },
+    { name = "engine_temp_k", type = "FLOAT", mode = "NULLABLE" },
+    { name = "engine_load", type = "FLOAT", mode = "NULLABLE" },
+    { name = "speed_kmh", type = "FLOAT", mode = "NULLABLE" },
+    { name = "torque_nm", type = "FLOAT", mode = "NULLABLE" },
+    { name = "fuel_trim", type = "FLOAT", mode = "NULLABLE" },
+    { name = "health_score", type = "FLOAT", mode = "NULLABLE" },
+    { name = "failure_probability", type = "FLOAT", mode = "NULLABLE" },
+    { name = "alert_triggered", type = "BOOLEAN", mode = "NULLABLE" },
   ])
 }
 
@@ -127,12 +127,12 @@ resource "google_bigquery_table" "dtc_events" {
   labels     = local.labels
 
   schema = jsonencode([
-    { name = "timestamp",        type = "TIMESTAMP", mode = "REQUIRED" },
-    { name = "vehicle_id",       type = "STRING",    mode = "REQUIRED" },
-    { name = "dtc_code",         type = "STRING",    mode = "REQUIRED" },
-    { name = "dtc_description",  type = "STRING",    mode = "NULLABLE" },
-    { name = "severity",         type = "STRING",    mode = "NULLABLE" },
-    { name = "resolved_at",      type = "TIMESTAMP", mode = "NULLABLE" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "vehicle_id", type = "STRING", mode = "REQUIRED" },
+    { name = "dtc_code", type = "STRING", mode = "REQUIRED" },
+    { name = "dtc_description", type = "STRING", mode = "NULLABLE" },
+    { name = "severity", type = "STRING", mode = "NULLABLE" },
+    { name = "resolved_at", type = "TIMESTAMP", mode = "NULLABLE" },
   ])
 }
 
@@ -151,13 +151,13 @@ resource "google_bigquery_table" "model_predictions" {
   labels     = local.labels
 
   schema = jsonencode([
-    { name = "timestamp",         type = "TIMESTAMP", mode = "REQUIRED" },
-    { name = "vehicle_id",        type = "STRING",    mode = "REQUIRED" },
-    { name = "features_json",     type = "JSON",      mode = "NULLABLE" },
-    { name = "prediction",        type = "INTEGER",   mode = "NULLABLE" },
-    { name = "probability",       type = "FLOAT",     mode = "NULLABLE" },
-    { name = "shap_values_json",  type = "JSON",      mode = "NULLABLE" },
-    { name = "model_version",     type = "STRING",    mode = "NULLABLE" },
+    { name = "timestamp", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "vehicle_id", type = "STRING", mode = "REQUIRED" },
+    { name = "features_json", type = "JSON", mode = "NULLABLE" },
+    { name = "prediction", type = "INTEGER", mode = "NULLABLE" },
+    { name = "probability", type = "FLOAT", mode = "NULLABLE" },
+    { name = "shap_values_json", type = "JSON", mode = "NULLABLE" },
+    { name = "model_version", type = "STRING", mode = "NULLABLE" },
   ])
 }
 
@@ -169,7 +169,7 @@ resource "google_firestore_database" "default" {
   location_id = var.firestore_region
   type        = "FIRESTORE_NATIVE"
 
-  deletion_policy = "DELETE"  # change to ABANDON in real production
+  deletion_policy = "DELETE" # change to ABANDON in real production
 }
 
 # =============================================================================
@@ -194,10 +194,10 @@ resource "google_service_account" "cloudrun_sa" {
 
 locals {
   cloudrun_roles = [
-    "roles/bigquery.dataEditor",         # insert rows into tables
-    "roles/bigquery.jobUser",            # run query jobs
-    "roles/datastore.user",              # read/write Firestore
-    "roles/storage.objectViewer",        # download models from bucket
+    "roles/bigquery.dataEditor",  # insert rows into tables
+    "roles/bigquery.jobUser",     # run query jobs
+    "roles/datastore.user",       # read/write Firestore
+    "roles/storage.objectViewer", # download models from bucket
     "roles/secretmanager.secretAccessor",
   ]
 }
@@ -232,7 +232,7 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.cloudrun_sa.email
 
     scaling {
-      min_instance_count = 0   # scales to zero — no cost when idle
+      min_instance_count = 0 # scales to zero — no cost when idle
       max_instance_count = var.cloudrun_max_instances
     }
 
@@ -245,8 +245,8 @@ resource "google_cloud_run_v2_service" "api" {
           cpu    = "1"
           memory = "512Mi"
         }
-        cpu_idle          = true   # release CPU when not processing requests
-        startup_cpu_boost = true   # extra CPU on cold start
+        cpu_idle          = true # release CPU when not processing requests
+        startup_cpu_boost = true # extra CPU on cold start
       }
 
       env {
