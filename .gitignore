@@ -21,12 +21,17 @@ node_modules/
 .expo/
 *.tgz
 
+# React Native / Expo — generated native code
+mobile/ios/
+mobile/android/
+
 # Terraform
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.backup
 infra/.terraform.lock.hcl
 infra/terraform.tfvars.local
+infra/tfplan
 
 # Secrets
 .env

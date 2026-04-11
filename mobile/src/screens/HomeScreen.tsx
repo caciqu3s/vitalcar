@@ -3,7 +3,7 @@ import {
   View, Text, Switch, TouchableOpacity, ActivityIndicator,
   StyleSheet, ScrollView, Alert,
 } from 'react-native';
-import { useVehicleStore } from '../store/vehicleStore';
+import { useVehicleStore, type DemoScenario } from '../store/vehicleStore';
 import { api } from '../services/api';
 import { getDemoReading, DEMO_SCENARIOS } from '../services/demo';
 
@@ -107,7 +107,7 @@ export default function HomeScreen() {
                 styles.scenarioBtn,
                 demoScenario === key && styles.scenarioBtnActive,
               ]}
-              onPress={() => setDemoScenario(key)}
+              onPress={() => setDemoScenario(key as DemoScenario)}
             >
               <Text style={styles.scenarioBtnText}>
                 {DEMO_SCENARIOS[key].label}

@@ -14,6 +14,7 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "com.vitalcar.app",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "VitalCar uses Bluetooth to connect to your OBD2 adapter.",
         "NSBluetoothPeripheralUsageDescription": "VitalCar uses Bluetooth to connect to your OBD2 adapter."
