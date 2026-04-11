@@ -29,7 +29,7 @@ export default function HomeScreen() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const score  = latestResult?.health_score ?? 100;
   const color  = scoreColor(score);
-  const status = latestResult?.status ?? (isConnected ? 'READING…' : 'CONNECTING…');
+  const status = latestResult?.status ?? (isConnected ? 'READING…' : 'NOT CONNECTED');
 
   async function poll() {
     // Demo mode takes full precedence

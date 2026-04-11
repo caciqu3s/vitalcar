@@ -4,7 +4,7 @@ import {
   StyleSheet, Platform, PermissionsAndroid,
 } from 'react-native';
 import {
-  scanForDevice, connectToDevice, subscribeDisconnect, disconnect,
+  scanForDevice, connectToDevice, subscribeDisconnect, disconnect, cancelScan,
 } from '../services/obd2';
 import {
   setDisconnectSubscription, removeDisconnectSubscription,
@@ -78,9 +78,11 @@ export default function ConnectModal({ visible, onClose }: ConnectModalProps) {
   }
 
   function handleCancel() {
-    // Cancel an in-progress scan/connect attempt
+    if (bleStatus === 'scanning') cancelScan();
+    else if (bleStatus === 'connecting') disconnect();
     setBleStatus('idle');
     setBleError(null);
+    setConnectedDeviceName(null);
     onClose();
   }
 

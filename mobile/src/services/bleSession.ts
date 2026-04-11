@@ -11,6 +11,7 @@ import type { Subscription } from 'react-native-ble-plx';
 let _sub: Subscription | null = null;
 
 export function setDisconnectSubscription(sub: Subscription | null): void {
+  _sub?.remove();  // prevent leak if handleConnect is retried
   _sub = sub;
 }
 

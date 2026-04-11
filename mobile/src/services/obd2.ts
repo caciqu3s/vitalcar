@@ -30,7 +30,14 @@ export async function scanForDevice(timeoutMs = 10_000): Promise<Device> {
   // Guard: Simulator returns 'Unknown'; PoweredOff means BT disabled.
   const btState = await getManager().state();
   if (btState !== 'PoweredOn') {
-    throw new Error(`Bluetooth is ${btState}. Please enable Bluetooth and try again.`);
+    const stateMessages: Record<string, string> = {
+      Unknown:      'Bluetooth is initializing. Please wait and try again.',
+      Resetting:    'Bluetooth is resetting. Please wait and try again.',
+      Unsupported:  'Bluetooth is not supported on this device.',
+      Unauthorized: 'Bluetooth permission denied. Please allow in Settings.',
+      PoweredOff:   'Bluetooth is off. Please enable it and try again.',
+    };
+    throw new Error(stateMessages[btState] ?? `Bluetooth is ${btState}. Please try again.`);
   }
 
   return new Promise((resolve, reject) => {
@@ -184,9 +191,14 @@ export function subscribeDisconnect(
   onDisconnect: (error: Error | null) => void,
 ): Subscription {
   return getManager().onDeviceDisconnected(deviceId, (bleError) => {
-    connectedDevice = null;  // clean up module state so subsequent calls fail fast
+    connectedDevice = null;    // clean up module state so subsequent calls fail fast
+    _sessionStartMs = null;    // reset so reconnect gets a fresh tool_wear accumulator
     onDisconnect(bleError ?? null);
   });
+}
+
+export function cancelScan(): void {
+  getManager().stopDeviceScan();
 }
 
 export function disconnect(): void {
