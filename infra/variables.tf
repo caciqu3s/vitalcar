@@ -12,7 +12,7 @@ variable "region" {
 variable "firestore_region" {
   description = "Firestore region (must be multi-region or nam5/eur3)"
   type        = string
-  default     = "nam5"   # US multi-region — more generous free tier
+  default     = "nam5" # US multi-region — more generous free tier
 }
 
 variable "environment" {

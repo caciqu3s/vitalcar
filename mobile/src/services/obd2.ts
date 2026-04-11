@@ -6,7 +6,7 @@
  * so the rest of the app never has to deal with raw hex strings.
  */
 
-import { BleManager, Device, Characteristic } from 'react-native-ble-plx';
+import { BleManager, Device, Characteristic, Subscription } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 
 // Standard ELM327 service / characteristic UUIDs (SPP over BLE)
@@ -16,6 +16,7 @@ const ELM327_RX_UUID      = '0000fff2-0000-1000-8000-00805f9b34fb';
 
 let manager: BleManager | null = null;
 let connectedDevice: Device | null = null;
+let _sessionStartMs: number | null = null;
 
 function getManager(): BleManager {
   if (!manager) {
@@ -25,7 +26,20 @@ function getManager(): BleManager {
 }
 
 /** Scan and return the first ELM327 device found (times out after timeoutMs). */
-export function scanForDevice(timeoutMs = 10_000): Promise<Device> {
+export async function scanForDevice(timeoutMs = 10_000): Promise<Device> {
+  // Guard: Simulator returns 'Unknown'; PoweredOff means BT disabled.
+  const btState = await getManager().state();
+  if (btState !== 'PoweredOn') {
+    const stateMessages: Record<string, string> = {
+      Unknown:      'Bluetooth is initializing. Please wait and try again.',
+      Resetting:    'Bluetooth is resetting. Please wait and try again.',
+      Unsupported:  'Bluetooth is not supported on this device.',
+      Unauthorized: 'Bluetooth permission denied. Please allow in Settings.',
+      PoweredOff:   'Bluetooth is off. Please enable it and try again.',
+    };
+    throw new Error(stateMessages[btState] ?? `Bluetooth is ${btState}. Please try again.`);
+  }
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       getManager().stopDeviceScan();
@@ -55,6 +69,7 @@ export async function connectToDevice(device: Device): Promise<void> {
   await sendCommand('ATE0');     // echo off
   await sendCommand('ATL0');     // linefeeds off
   await sendCommand('ATSP0');    // auto-detect protocol
+  _sessionStartMs = Date.now(); // start accumulator for tool_wear fallback
 }
 
 /** Send a raw AT/OBD2 command and return the trimmed response string. */
@@ -122,6 +137,29 @@ export async function readSensors(): Promise<OBD2Reading> {
   };
 }
 
+/**
+ * Read engine run time since start (PID 01 1F) as a proxy for the ML
+ * model's tool_wear feature (training range 0–240 min).
+ * Falls back to wall-clock time since BLE connect if PID is unsupported.
+ */
+export async function readRunTime(): Promise<number> {
+  try {
+    const hex = await readPID('01', '1F');
+    if (!hex || hex.length < 4) return _accumulatorFallback();
+    const A = parseInt(hex.slice(0, 2), 16);
+    const B = parseInt(hex.slice(2, 4), 16);
+    const seconds = (A * 256) + B;          // SAE J1979 formula
+    return Math.min(Math.round(seconds / 60), 240);
+  } catch {
+    return _accumulatorFallback();
+  }
+}
+
+function _accumulatorFallback(): number {
+  if (_sessionStartMs === null) return 0;
+  return Math.min(Math.round((Date.now() - _sessionStartMs) / 60_000), 240);
+}
+
 /** Read active DTC codes (mode 03). Returns array of code strings like "P0300". */
 export async function readDTCCodes(): Promise<string[]> {
   const response = await sendCommand('03');
@@ -143,7 +181,28 @@ export async function readDTCCodes(): Promise<string[]> {
   return codes;
 }
 
+/**
+ * Subscribe to device-disconnected events. Call immediately after connectToDevice().
+ * The callback fires when the dongle is physically unplugged or goes out of range.
+ * Returns a Subscription — store it in bleSession.ts so it survives modal unmount.
+ */
+export function subscribeDisconnect(
+  deviceId: string,
+  onDisconnect: (error: Error | null) => void,
+): Subscription {
+  return getManager().onDeviceDisconnected(deviceId, (bleError) => {
+    connectedDevice = null;    // clean up module state so subsequent calls fail fast
+    _sessionStartMs = null;    // reset so reconnect gets a fresh tool_wear accumulator
+    onDisconnect(bleError ?? null);
+  });
+}
+
+export function cancelScan(): void {
+  getManager().stopDeviceScan();
+}
+
 export function disconnect(): void {
   connectedDevice?.cancelConnection();
   connectedDevice = null;
+  _sessionStartMs = null;
 }

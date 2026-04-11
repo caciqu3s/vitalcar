@@ -6,6 +6,8 @@ import {
 import { useVehicleStore, type DemoScenario } from '../store/vehicleStore';
 import { api } from '../services/api';
 import { getDemoReading, DEMO_SCENARIOS } from '../services/demo';
+import { readSensors, readRunTime } from '../services/obd2';
+import ConnectModal from '../components/ConnectModal';
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -18,55 +20,97 @@ function scoreColor(score: number): string {
 export default function HomeScreen() {
   const {
     isDemoMode, demoScenario, vehicleId,
+    isConnected, connectedDeviceName,
     latestResult, isLoading, lastError,
     setDemoMode, setDemoScenario, setResult, setLoading, setError,
   } = useVehicleStore();
 
+  const [modalVisible, setModalVisible] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const score  = latestResult?.health_score ?? 100;
   const color  = scoreColor(score);
-  const status = latestResult?.status ?? 'CONNECTING…';
+  const status = latestResult?.status ?? (isConnected ? 'READING…' : 'NOT CONNECTED');
 
   async function poll() {
-    if (!isDemoMode) return; // real OBD2 polling handled by obd2.ts flow
+    // Demo mode takes full precedence
+    if (isDemoMode) {
+      setLoading(true);
+      try {
+        const raw = getDemoReading(demoScenario);
+        const result = await api.predict({
+          vehicle_id:   vehicleId,
+          vehicle_type: 1,
+          air_temp:     raw.air_temp,
+          process_temp: raw.process_temp,
+          rpm:          raw.rpm,
+          torque:       raw.torque,
+          tool_wear:    raw.tool_wear,
+        });
+        setResult(result);
+        if (result.alert) {
+          Alert.alert('Vehicle Alert', result.recommendation, [{ text: 'OK' }]);
+        }
+      } catch (e: any) {
+        setError(e?.message ?? 'API error');
+      }
+      return;
+    }
+
+    // Real OBD2 path
+    if (!isConnected) return;
     setLoading(true);
     try {
-      const raw = getDemoReading(demoScenario);
+      const [sensors, toolWear] = await Promise.all([readSensors(), readRunTime()]);
       const result = await api.predict({
         vehicle_id:   vehicleId,
         vehicle_type: 1,
-        air_temp:     raw.air_temp,
-        process_temp: raw.process_temp,
-        rpm:          raw.rpm,
-        torque:       raw.torque,
-        tool_wear:    raw.tool_wear,
+        air_temp:     sensors.air_temp,
+        process_temp: sensors.process_temp,
+        rpm:          sensors.rpm,
+        torque:       sensors.torque,
+        tool_wear:    toolWear,
+        speed_kmh:    sensors.speed_kmh,
+        fuel_trim:    sensors.fuel_trim,
       });
       setResult(result);
       if (result.alert) {
-        Alert.alert(
-          'Vehicle Alert',
-          result.recommendation,
-          [{ text: 'OK' }],
-        );
+        Alert.alert('Vehicle Alert', result.recommendation, [{ text: 'OK' }]);
       }
     } catch (e: any) {
-      setError(e?.message ?? 'API error');
+      setError(e?.message ?? 'OBD2 read error');
     }
   }
 
   useEffect(() => {
-    if (isDemoMode) {
+    if (isDemoMode || isConnected) {
       poll();
       intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isDemoMode, demoScenario]);
+  }, [isDemoMode, demoScenario, isConnected]);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Vehicle Health</Text>
+
+      {/* BLE connection status strip */}
+      <View style={styles.connectionRow}>
+        <View style={[styles.dot, { backgroundColor: isConnected ? '#22c55e' : '#94a3b8' }]} />
+        <Text style={styles.connectionText}>
+          {isConnected ? (connectedDeviceName ?? 'OBD2 Adapter') : 'Not connected'}
+        </Text>
+        <TouchableOpacity
+          style={[styles.connectBtn, isDemoMode && styles.connectBtnDisabled]}
+          onPress={() => setModalVisible(true)}
+          disabled={isDemoMode}
+        >
+          <Text style={styles.connectBtnText}>
+            {isDemoMode ? 'Demo' : isConnected ? 'Manage' : 'Connect'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Circular health gauge */}
       <View style={[styles.gauge, { borderColor: color }]}>
@@ -116,13 +160,21 @@ export default function HomeScreen() {
           ))}
         </View>
       )}
+
+      <ConnectModal visible={modalVisible} onClose={() => setModalVisible(false)} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container:      { flexGrow: 1, alignItems: 'center', padding: 24, backgroundColor: '#f8fafc' },
-  title:          { fontSize: 22, fontWeight: '700', color: '#1e293b', marginBottom: 24 },
+  title:          { fontSize: 22, fontWeight: '700', color: '#1e293b', marginBottom: 16 },
+  connectionRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20, width: '100%' },
+  dot:            { width: 10, height: 10, borderRadius: 5 },
+  connectionText: { fontSize: 14, color: '#475569', flex: 1 },
+  connectBtn:     { backgroundColor: '#3b82f6', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
+  connectBtnDisabled: { backgroundColor: '#94a3b8' },
+  connectBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   gauge:          {
     width: 180, height: 180, borderRadius: 90, borderWidth: 8,
     alignItems: 'center', justifyContent: 'center',

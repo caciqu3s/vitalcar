@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Replace with Cloud Run URL after deploy (printed by terraform output cloudrun_url)
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://vitalcar-api-replace-me.a.run.app';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://vitalcar-api-q42eksufca-uc.a.run.app';
 
 export interface SensorReading {
   vehicle_id: string;
