@@ -2,7 +2,7 @@
 
 Predictive vehicle maintenance using OBD2 sensor data, machine learning, and explainable AI. The mobile app connects to an ELM327 Bluetooth adapter, streams live engine readings to a cloud API, and shows the driver their vehicle health score plus the top factors driving any alert — powered by a Random Forest model and SHAP.
 
-Built as a Computer Science undergraduate thesis (TCC) at [your university].
+Built as a Computer Science undergraduate thesis (TCC) at UNIP.
 
 **Live API:** `https://vitalcar-api-q42eksufca-uc.a.run.app`
 
