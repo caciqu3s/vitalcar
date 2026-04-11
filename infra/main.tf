@@ -243,7 +243,7 @@ resource "google_cloud_run_v2_service" "api" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "512Mi"
+          memory = "1Gi"
         }
         cpu_idle          = true # release CPU when not processing requests
         startup_cpu_boost = true # extra CPU on cold start
@@ -267,7 +267,7 @@ resource "google_cloud_run_v2_service" "api" {
           path = "/health"
           port = 8080
         }
-        initial_delay_seconds = 10
+        initial_delay_seconds = 30
         period_seconds        = 5
         failure_threshold     = 3
       }
